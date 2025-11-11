@@ -55,83 +55,7 @@ function showModal(message, { continueText = 'Continue', cancelText = 'Cancel' }
   });
 }
 
-document.getElementById('form-add').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.currentTarget;
-  const fd = new FormData(form);
-  const confirmed = await showModal('Add Entry: proceed to send to GLPI?', { continueText: 'Send', cancelText: 'Cancel' });
-  if (!confirmed) { setResult('add-result', 'Cancelled.'); return; }
-  setResult('add-result', 'Submitting to GLPI...');
-  try {
-    const res = await fetch('/api/add_entry', { method: 'POST', body: fd });
-    const data = await res.json();
-    setResult('add-result', data);
-  } catch (err) {
-    setResult('add-result', String(err));
-  }
-});
-
-document.getElementById('form-qr').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.currentTarget);
-  setResult('qr-result', 'Decoding...');
-  try {
-    const res = await fetch('/api/scan_qr', { method: 'POST', body: fd });
-    const data = await res.json();
-    setResult('qr-result', data);
-    const value = data && data.qr_value ? `QR code scanned: ${data.qr_value}` : 'No QR detected.';
-    await showModal(value, { continueText: 'Close', cancelText: 'Close' });
-  } catch (err) {
-    setResult('qr-result', String(err));
-  }
-});
-
-document.getElementById('form-location').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.currentTarget;
-  const payload = {
-    item_id: form.item_id.value ? Number(form.item_id.value) : null,
-    qr_value: form.qr_value.value || null,
-    location_id: Number(form.location_id.value)
-  };
-  const summary = `Change Location:\nitem_id=${payload.item_id}\nqr_value=${payload.qr_value}\nlocation_id=${payload.location_id}\nProceed?`;
-  const confirmed = await showModal(summary, { continueText: 'Update', cancelText: 'Cancel' });
-  if (!confirmed) { setResult('loc-result', 'Cancelled.'); return; }
-  setResult('loc-result', 'Updating in GLPI...');
-  const res = await postJSON('/api/change_location', payload);
-  setResult('loc-result', res.data);
-});
-
-document.getElementById('form-user').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.currentTarget;
-  const payload = {
-    item_id: form.item_id.value ? Number(form.item_id.value) : null,
-    qr_value: form.qr_value.value || null,
-    user_id: Number(form.user_id.value)
-  };
-  const summary = `Change User:\nitem_id=${payload.item_id}\nqr_value=${payload.qr_value}\nuser_id=${payload.user_id}\nProceed?`;
-  const confirmed = await showModal(summary, { continueText: 'Update', cancelText: 'Cancel' });
-  if (!confirmed) { setResult('user-result', 'Cancelled.'); return; }
-  setResult('user-result', 'Updating in GLPI...');
-  const res = await postJSON('/api/change_user', payload);
-  setResult('user-result', res.data);
-});
-
-document.getElementById('form-check').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.currentTarget;
-  const payload = {
-    item_id: form.item_id.value ? Number(form.item_id.value) : null,
-    qr_value: form.qr_value.value || null
-  };
-  const summary = `Check Entry:\nitem_id=${payload.item_id}\nqr_value=${payload.qr_value}\nProceed?`;
-  const confirmed = await showModal(summary, { continueText: 'Check', cancelText: 'Cancel' });
-  if (!confirmed) { setResult('check-result', 'Cancelled.'); return; }
-  setResult('check-result', 'Checking in GLPI...');
-  const res = await postJSON('/api/check_entry', payload);
-  setResult('check-result', res.data);
-});
+// removed legacy forms to simplify UI
 
 // Initialize config on load
 loadConfig();
@@ -158,8 +82,16 @@ loadConfig();
   const ocrPanel = document.getElementById('tab-ocr-capture');
   const qrClose = document.getElementById('qr-close');
   const ocrClose = document.getElementById('ocr-close');
-  openQR?.addEventListener('click', () => { qrPanel.classList.remove('hidden'); });
-  openOCR?.addEventListener('click', () => { ocrPanel.classList.remove('hidden'); });
+  openQR?.addEventListener('click', () => {
+    qrPanel.classList.remove('hidden');
+    // auto-start scan if available
+    if (window.__qrStart) window.__qrStart();
+  });
+  openOCR?.addEventListener('click', () => {
+    ocrPanel.classList.remove('hidden');
+    // auto-start camera if available
+    if (window.__ocrStart) window.__ocrStart();
+  });
   qrClose?.addEventListener('click', () => { qrPanel.classList.add('hidden'); });
   ocrClose?.addEventListener('click', () => { ocrPanel.classList.add('hidden'); });
 })();
@@ -177,21 +109,30 @@ loadConfig();
 
   async function start() {
     try {
-      // Pick back camera when possible
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videos = devices.filter(d => d.kind === 'videoinput');
-      const back = videos.find(d => /back|rear|environment/i.test(d.label)) || videos[0];
-      selectedDeviceId = back ? back.deviceId : undefined;
-
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : { facingMode: 'environment' },
-        audio: false
-      });
+      if (!isSecureContext) {
+        resultEl.textContent = 'This page is not in a secure context (HTTPS). Camera is blocked by iOS. Access via https://assetocr.arthursepp.eu/';
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        resultEl.textContent = 'Camera API not available in this browser.';
+        return;
+      }
+      // Request camera with environment first (works better on iOS)
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
       video.srcObject = stream;
       video.setAttribute('playsinline','');
       video.setAttribute('muted','');
       video.setAttribute('autoplay','');
       await video.play();
+
+      // After permission, try to refine to a specific back camera if labels are now available
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videos = devices.filter(d => d.kind === 'videoinput');
+        const back = videos.find(d => /back|rear|environment/i.test(d.label)) || videos[0];
+        selectedDeviceId = back ? back.deviceId : null;
+      } catch {}
+
       scanning = true;
 
       const { BrowserMultiFormatReader, NotFoundException } = window.ZXing;
@@ -219,6 +160,8 @@ loadConfig();
       resultEl.textContent = 'Camera error: ' + e;
     }
   }
+  // expose for outer open button auto-start
+  window.__qrStart = start;
   function stop() {
     scanning = false;
     if (codeReader) {
@@ -288,6 +231,10 @@ loadConfig();
 
   async function start() {
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Camera API not available in this browser.');
+        return;
+      }
       // Prefer back camera
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videos = devices.filter(d => d.kind === 'videoinput');
@@ -308,6 +255,8 @@ loadConfig();
       alert('Camera error: ' + e);
     }
   }
+  // expose for outer open button auto-start
+  window.__ocrStart = start;
   function capture() {
     if (!video.videoWidth) return;
     canvas.width = video.videoWidth;
