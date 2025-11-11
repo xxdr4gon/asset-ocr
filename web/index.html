@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OCR/QR GLPI Gateway</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://unpkg.com/@zxing/browser@latest"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Asset Intake & Management</h1>
+    <div id="glpi-banner" class="banner hidden">
+      GLPI is not configured. Actions are disabled until you add GLPI settings.
+    </div>
+
+    <div class="quick-actions row">
+      <button id="open-qr-scan">Open QR Scanner</button>
+      <button id="open-ocr-capture">Open OCR Capture</button>
+    </div>
+    <div class="card">
+      <h2>Add Entry</h2>
+      <form id="form-add" enctype="multipart/form-data">
+        <label>Spec Sheet Image (required)</label>
+        <input type="file" name="spec_image" accept="image/*" required>
+        <label>QR Image (optional)</label>
+        <input type="file" name="qr_image" accept="image/*">
+        <label>Item Type</label>
+        <select name="item_type">
+          <option value="auto" selected>Auto</option>
+          <option value="Computer">Computer</option>
+          <option value="NetworkEquipment">Network Equipment</option>
+          <option value="Printer">Printer</option>
+          <option value="Peripheral">Peripheral</option>
+        </select>
+        <button type="submit">Add Entry</button>
+      </form>
+      <pre id="add-result" class="result"></pre>
+    </div>
+
+    <div class="card">
+      <h2>Scan QR</h2>
+      <form id="form-qr" enctype="multipart/form-data">
+        <label>QR Image</label>
+        <input type="file" name="file" accept="image/*" required>
+        <button type="submit">Decode QR</button>
+      </form>
+      <pre id="qr-result" class="result"></pre>
+    </div>
+
+    <div class="card hidden" id="tab-qr-scan">
+      <h2>QR Scan (Camera)</h2>
+      <div class="camera">
+        <video id="qr-video" playsinline muted autoplay></video>
+      </div>
+      <div class="row">
+        <button id="qr-start">Start Scan</button>
+        <button id="qr-stop">Stop</button>
+        <button id="qr-close" class="secondary">Close</button>
+      </div>
+      <pre id="qr-live-result" class="result"></pre>
+    </div>
+
+    <div class="card hidden" id="tab-ocr-capture">
+      <h2>OCR Capture (Camera)</h2>
+      <div class="camera">
+        <video id="ocr-video" playsinline muted autoplay></video>
+        <canvas id="ocr-canvas" class="hidden"></canvas>
+        <img id="ocr-preview" class="hidden" alt="Captured preview">
+      </div>
+      <div class="row">
+        <button id="ocr-start">Start Camera</button>
+        <button id="ocr-capture">Capture</button>
+        <button id="ocr-retake" class="secondary">Retake</button>
+        <button id="ocr-add-to-list">Add to list</button>
+        <button id="ocr-close" class="secondary">Close</button>
+      </div>
+      <div>
+        <h3>Scanned devices (local list)</h3>
+        <div id="ocr-list" class="list"></div>
+        <div class="row">
+          <button id="ocr-push-all">Push all to GLPI</button>
+          <button id="ocr-clear-list" class="secondary">Clear list</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Change Location</h2>
+      <form id="form-location">
+        <label>Item ID (or leave blank and provide QR value)</label>
+        <input type="number" name="item_id" placeholder="123">
+        <label>QR Value</label>
+        <input type="text" name="qr_value" placeholder="scanned QR value">
+        <label>Location ID</label>
+        <input type="number" name="location_id" required>
+        <button type="submit">Update Location</button>
+      </form>
+      <pre id="loc-result" class="result"></pre>
+    </div>
+
+    <div class="card">
+      <h2>Change User</h2>
+      <form id="form-user">
+        <label>Item ID (or leave blank and provide QR value)</label>
+        <input type="number" name="item_id" placeholder="123">
+        <label>QR Value</label>
+        <input type="text" name="qr_value" placeholder="scanned QR value">
+        <label>User ID</label>
+        <input type="number" name="user_id" required>
+        <button type="submit">Update User</button>
+      </form>
+      <pre id="user-result" class="result"></pre>
+    </div>
+
+    <div class="card">
+      <h2>Check Entry</h2>
+      <form id="form-check">
+        <label>Item ID (or leave blank and provide QR value)</label>
+        <input type="number" name="item_id" placeholder="123">
+        <label>QR Value</label>
+        <input type="text" name="qr_value" placeholder="scanned QR value">
+        <button type="submit">Check</button>
+      </form>
+      <pre id="check-result" class="result"></pre>
+    </div>
+
+    <div class="card hidden" id="tab-qr-actions">
+      <h2>QR Actions</h2>
+      <div id="qr-actions-info" class="hint"></div>
+      <div class="row">
+        <button id="qr-act-view">View Info</button>
+        <button id="qr-act-change-location">Change Location</button>
+        <button id="qr-act-change-user">Change User</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="secondary">Cancel</button>
+        <button id="modal-continue" class="primary">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/script.js"></script>
+  <script>
+    // Lightweight online/offline indicator
+    fetch('/api/health').then(()=>{}).catch(()=>{});
+  </script>
+</body>
+</html>
+
+

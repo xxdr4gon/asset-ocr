@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    image: ocr-glpi-backend:latest
+    container_name: ocr-glpi-backend
+    restart: unless-stopped
+    security_opt:
+      - seccomp=unconfined
+    expose:
+      - "8000"
+    volumes:
+      - backend_data:/data
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    image: ocr-glpi-nginx:latest
+    container_name: ocr-glpi-nginx
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    depends_on:
+      - backend
+    env_file:
+      - .env
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+      - nginx_certs:/etc/nginx/certs
+
+volumes:
+  backend_data:
+  nginx_certs:
+
+
